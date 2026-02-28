@@ -685,7 +685,7 @@ class LightRAG:
             workspace=self.workspace,
             embedding_func=self.embedding_func,
             meta_fields={"entity_name", "source_id", "content", "file_path", "entity_type",
-                         "evidence_level", "scene_tags", "source_provenance"},
+                         "evidence_level", "scene_tags", "source_provenance", "evidence_chain_ids"},
         )
         self.relationships_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=NameSpace.VECTOR_STORE_RELATIONSHIPS,
@@ -698,7 +698,7 @@ class LightRAG:
             namespace=NameSpace.VECTOR_STORE_CHUNKS,
             workspace=self.workspace,
             embedding_func=self.embedding_func,
-            meta_fields={"full_doc_id", "content", "file_path"},
+            meta_fields={"full_doc_id", "content", "file_path", "evidence_level", "scene_tags", "source_provenance"},
         )
 
         # Initialize document status storage
@@ -1331,6 +1331,18 @@ class LightRAG:
                     "tokens": tokens,
                     "chunk_order_index": index,
                     "file_path": file_path,
+                    "evidence_level": "B",
+                    "scene_tags": [],
+                    "source_provenance": [
+                        {
+                            "doc_id": doc_key,
+                            "file_name": os.path.basename(file_path)
+                            if file_path
+                            else "unknown",
+                            "file_path": file_path,
+                            "chunk_id": chunk_key,
+                        }
+                    ],
                 }
 
             doc_ids = set(inserting_chunks.keys())
@@ -1967,6 +1979,16 @@ class LightRAG:
                                 }
                                 for dp in chunking_result
                             }
+                            for chunk_id, chunk in chunks.items():
+                                if "evidence_level" not in chunk:
+                                    chunk["evidence_level"] = "B"
+                                if "scene_tags" not in chunk:
+                                    chunk["scene_tags"] = []
+                                provenance = chunk.get("source_provenance")
+                                if provenance is None:
+                                    chunk["source_provenance"] = []
+                                elif isinstance(provenance, dict):
+                                    chunk["source_provenance"] = [provenance]
 
                             if not chunks:
                                 logger.warning("No document chunks to process")
@@ -2384,6 +2406,9 @@ class LightRAG:
                     else source_id,
                     "file_path": file_path,
                     "status": DocStatus.PROCESSED,
+                    "evidence_level": chunk_data.get("evidence_level", "B"),
+                    "scene_tags": chunk_data.get("scene_tags", []),
+                    "source_provenance": chunk_data.get("source_provenance", []),
                 }
                 all_chunks_data[chunk_id] = chunk_entry
                 chunk_to_source_map[source_id] = chunk_id
@@ -2419,6 +2444,10 @@ class LightRAG:
                     "source_id": source_id,
                     "file_path": file_path,
                     "created_at": int(time.time()),
+                    "evidence_level": entity_data.get("evidence_level", "B"),
+                    "scene_tags": entity_data.get("scene_tags", []),
+                    "source_provenance": entity_data.get("source_provenance", []),
+                    "evidence_chain_ids": entity_data.get("evidence_chain_ids", []),
                 }
                 # Insert node data into the knowledge graph
                 await self.chunk_entity_relation_graph.upsert_node(
@@ -2474,6 +2503,11 @@ class LightRAG:
                         "source_id": source_id,
                         "file_path": file_path,
                         "created_at": int(time.time()),
+                        "relation_type": relationship_data.get("relation_type", "related"),
+                        "evidence_level": relationship_data.get("evidence_level", "B"),
+                        "source_provenance": relationship_data.get(
+                            "source_provenance", []
+                        ),
                     },
                 )
 
@@ -2486,6 +2520,9 @@ class LightRAG:
                     "weight": weight,
                     "file_path": file_path,
                     "created_at": int(time.time()),
+                    "relation_type": relationship_data.get("relation_type", "related"),
+                    "evidence_level": relationship_data.get("evidence_level", "B"),
+                    "source_provenance": relationship_data.get("source_provenance", []),
                 }
                 all_relationships_data.append(edge_data)
                 update_storage = True
@@ -2499,6 +2536,10 @@ class LightRAG:
                     "description": dp["description"],
                     "entity_type": dp["entity_type"],
                     "file_path": dp.get("file_path", "custom_kg"),
+                    "evidence_level": dp.get("evidence_level", "B"),
+                    "scene_tags": dp.get("scene_tags", []),
+                    "source_provenance": dp.get("source_provenance", []),
+                    "evidence_chain_ids": dp.get("evidence_chain_ids", []),
                 }
                 for dp in all_entities_data
             }
@@ -2515,6 +2556,9 @@ class LightRAG:
                     "description": dp["description"],
                     "weight": dp["weight"],
                     "file_path": dp.get("file_path", "custom_kg"),
+                    "relation_type": dp.get("relation_type", "related"),
+                    "evidence_level": dp.get("evidence_level", "B"),
+                    "source_provenance": dp.get("source_provenance", []),
                 }
                 for dp in all_relationships_data
             }

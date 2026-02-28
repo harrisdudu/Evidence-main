@@ -1,6 +1,7 @@
 import os
 import asyncio
 import random
+import json
 from dataclasses import dataclass
 from typing import final
 import configparser
@@ -57,6 +58,32 @@ class MemgraphStorage(BaseGraphStorage):
             )
 
         self._driver = None
+
+    @staticmethod
+    def _sanitize_properties(properties: dict) -> dict:
+        out = {}
+        for k, v in (properties or {}).items():
+            if isinstance(v, dict) or (
+                isinstance(v, list) and any(isinstance(x, dict) for x in v)
+            ):
+                out[k] = json.dumps(v, ensure_ascii=False)
+            else:
+                out[k] = v
+        return out
+
+    @staticmethod
+    def _decode_properties(properties: dict | None) -> dict | None:
+        if properties is None:
+            return None
+        out = dict(properties)
+        for k in {"scene_tags", "source_provenance", "evidence_chain_ids"}:
+            v = out.get(k)
+            if isinstance(v, str) and v and v[0] in "[{":
+                try:
+                    out[k] = json.loads(v)
+                except Exception:
+                    pass
+        return out
 
     def _get_workspace_label(self) -> str:
         """Return workspace label (guaranteed non-empty during initialization)"""
@@ -253,7 +280,7 @@ class MemgraphStorage(BaseGraphStorage):
                                 for label in node_dict["labels"]
                                 if label != workspace_label
                             ]
-                        return node_dict
+                        return MemgraphStorage._decode_properties(node_dict)
                     return None
                 finally:
                     await result.consume()  # Ensure result is fully consumed
@@ -457,7 +484,9 @@ class MemgraphStorage(BaseGraphStorage):
                 records = await result.fetch(2)
                 await result.consume()
                 if records:
-                    edge_result = dict(records[0]["edge_properties"])
+                    edge_result = MemgraphStorage._decode_properties(
+                        dict(records[0]["edge_properties"])
+                    )
                     for key, default_value in {
                         "weight": 1.0,
                         "source_id": None,
@@ -481,7 +510,9 @@ class MemgraphStorage(BaseGraphStorage):
                     )  # Ensure the result is consumed even on error
                 raise
 
-    async def upsert_node(self, node_id: str, node_data: dict[str, str]) -> None:
+    async def upsert_node(
+        self, node_id: str | None = None, node_data: dict[str, str] | None = None, **kwargs
+    ) -> None:
         """
         Upsert a node in the Memgraph database with manual transaction-level retry logic for transient errors.
 
@@ -489,11 +520,19 @@ class MemgraphStorage(BaseGraphStorage):
             node_id: The unique identifier for the node (used as label)
             node_data: Dictionary of node properties
         """
+        if node_data is None and kwargs:
+            node_data = dict(kwargs)
+        if node_id is None and node_data is not None and "entity_id" in node_data:
+            node_id = node_data.get("entity_id")
+        if node_data is None or node_id is None:
+            raise ValueError("Memgraph: upsert_node requires node_id and node_data")
+        if node_data.get("entity_id") != node_id:
+            node_data = {**node_data, "entity_id": node_id}
         if self._driver is None:
             raise RuntimeError(
                 "Memgraph driver is not initialized. Call 'await initialize()' first."
             )
-        properties = node_data
+        properties = MemgraphStorage._sanitize_properties(node_data)
         entity_type = properties["entity_type"]
         if "entity_id" not in properties:
             raise ValueError(
@@ -591,7 +630,7 @@ class MemgraphStorage(BaseGraphStorage):
                 "Memgraph driver is not initialized. Call 'await initialize()' first."
             )
 
-        edge_properties = edge_data
+        edge_properties = MemgraphStorage._sanitize_properties(edge_data)
 
         # Manual transaction-level retry following official Memgraph documentation
         max_retries = 100
@@ -1010,7 +1049,7 @@ class MemgraphStorage(BaseGraphStorage):
                 node_dict = dict(node)
                 # Add node id (entity_id) to the dictionary for easier access
                 node_dict["id"] = node_dict.get("entity_id")
-                nodes.append(node_dict)
+                nodes.append(MemgraphStorage._decode_properties(node_dict))
             await result.consume()
             return nodes
 
@@ -1035,7 +1074,7 @@ class MemgraphStorage(BaseGraphStorage):
             result = await session.run(query)
             edges = []
             async for record in result:
-                edge_properties = record["properties"]
+                edge_properties = MemgraphStorage._decode_properties(record["properties"])
                 edge_properties["source"] = record["source"]
                 edge_properties["target"] = record["target"]
                 edges.append(edge_properties)

@@ -454,11 +454,12 @@ async def _handle_single_entity_extraction(
             evidence_level="B",
             source_provenance=[{
                 "doc_id": chunk_key.split("_")[0] if chunk_key else "unknown",
-                "file_name": file_path.split("/")[-1] if file_path else "unknown",
+                "file_name": Path(file_path).name if file_path else "unknown",
                 "file_path": file_path,
                 "chunk_id": chunk_key,
             }],
             scene_tags=[],
+            evidence_chain_ids=[],
         )
     except ValueError as e:
         logger.error(
@@ -1140,6 +1141,7 @@ async def _rebuild_single_entity(
                 "evidence_level": current_entity.get("evidence_level", "B"),
                 "scene_tags": current_entity.get("scene_tags", []),
                 "source_provenance": current_entity.get("source_provenance", []),
+                "evidence_chain_ids": current_entity.get("evidence_chain_ids", []),
             }
             await knowledge_graph_inst.upsert_node(entity_name, updated_entity_data)
 
@@ -1159,6 +1161,9 @@ async def _rebuild_single_entity(
                     "evidence_level": updated_entity_data.get("evidence_level", "B"),
                     "scene_tags": updated_entity_data.get("scene_tags", []),
                     "source_provenance": updated_entity_data.get("source_provenance", []),
+                    "evidence_chain_ids": updated_entity_data.get(
+                        "evidence_chain_ids", []
+                    ),
                 }
             }
 
@@ -1696,6 +1701,7 @@ async def _merge_nodes_then_upsert(
     evidence_level = "B"
     scene_tags = []
     source_provenance = []
+    evidence_chain_ids = []
     for dp in nodes_data:
         if dp.get("evidence_level"):
             evidence_level = dp.get("evidence_level", "B")
@@ -1703,6 +1709,8 @@ async def _merge_nodes_then_upsert(
             scene_tags = dp.get("scene_tags", [])
         if dp.get("source_provenance"):
             source_provenance = dp.get("source_provenance", [])
+        if dp.get("evidence_chain_ids"):
+            evidence_chain_ids = dp.get("evidence_chain_ids", [])
     if already_node:
         if already_node.get("evidence_level"):
             evidence_level = already_node.get("evidence_level", "B")
@@ -1710,6 +1718,8 @@ async def _merge_nodes_then_upsert(
             scene_tags = already_node.get("scene_tags", [])
         if already_node.get("source_provenance"):
             source_provenance = already_node.get("source_provenance", [])
+        if already_node.get("evidence_chain_ids"):
+            evidence_chain_ids = already_node.get("evidence_chain_ids", [])
 
     new_source_ids = [dp["source_id"] for dp in nodes_data if dp.get("source_id")]
 
@@ -1945,14 +1955,7 @@ async def _merge_nodes_then_upsert(
         evidence_level=evidence_level,
         scene_tags=scene_tags,
         source_provenance=source_provenance,
-    )
-        entity_id=entity_name,
-        entity_type=entity_type,
-        description=description,
-        source_id=source_id,
-        file_path=file_path,
-        created_at=int(time.time()),
-        truncate=truncation_info,
+        evidence_chain_ids=evidence_chain_ids,
     )
     await knowledge_graph_inst.upsert_node(
         entity_name,
@@ -1973,6 +1976,7 @@ async def _merge_nodes_then_upsert(
                 "evidence_level": node_data.get("evidence_level", "B"),
                 "scene_tags": node_data.get("scene_tags", []),
                 "source_provenance": node_data.get("source_provenance", []),
+                "evidence_chain_ids": node_data.get("evidence_chain_ids", []),
             }
         }
         await safe_vdb_operation_with_exception(
@@ -2045,6 +2049,26 @@ async def _merge_edges_then_upsert(
                 )
 
     new_source_ids = [dp["source_id"] for dp in edges_data if dp.get("source_id")]
+
+    # Extract evidence chain fields from edges_data
+    evidence_level = "B"
+    relation_type = ""
+    source_provenance = []
+    for dp in edges_data:
+        if dp.get("evidence_level"):
+            evidence_level = dp.get("evidence_level", "B")
+        if dp.get("relation_type"):
+            relation_type = dp.get("relation_type", "")
+        if dp.get("source_provenance"):
+            source_provenance = dp.get("source_provenance", [])
+    # Also check already_edge for existing evidence fields
+    if already_edge:
+        if already_edge.get("evidence_level"):
+            evidence_level = already_edge.get("evidence_level", "B")
+        if already_edge.get("relation_type"):
+            relation_type = already_edge.get("relation_type", "")
+        if already_edge.get("source_provenance"):
+            source_provenance = already_edge.get("source_provenance", [])
 
     storage_key = make_relation_chunk_key(src_id, tgt_id)
     existing_full_source_ids = []
@@ -2158,6 +2182,10 @@ async def _merge_edges_then_upsert(
     sorted_edges = sorted(
         unique_edges.values(),
         key=lambda x: (x.get("timestamp", 0), -len(x.get("description", ""))),
+        # Evidence 证据链增强字段
+        evidence_level=evidence_level,
+        relation_type=relation_type,
+        source_provenance=source_provenance,
     )
     sorted_descriptions = [dp["description"] for dp in sorted_edges]
 
@@ -2478,13 +2506,17 @@ async def _merge_edges_then_upsert(
         file_path=file_path,
         created_at=edge_created_at,
         truncate=truncation_info,
-        weight=weight,
+        # weight=weight,
+        # Evidence 证据链增强字段
+        evidence_level=evidence_level,
+        relation_type=relation_type,
+        source_provenance=source_provenance,
     )
+
 
     # Sort src_id and tgt_id to ensure consistent ordering (smaller string first)
     if src_id > tgt_id:
         src_id, tgt_id = tgt_id, src_id
-
     if relationships_vdb is not None:
         rel_vdb_id = compute_mdhash_id(src_id + tgt_id, prefix="rel-")
         rel_vdb_id_reverse = compute_mdhash_id(tgt_id + src_id, prefix="rel-")
@@ -4377,6 +4409,14 @@ async def _get_node_data(
             "entity_name": k["entity_name"],
             "rank": d,
             "created_at": k.get("created_at"),
+            "evidence_level": n.get("evidence_level", k.get("evidence_level", "B")),
+            "scene_tags": n.get("scene_tags", k.get("scene_tags", [])),
+            "source_provenance": n.get(
+                "source_provenance", k.get("source_provenance", [])
+            ),
+            "evidence_chain_ids": n.get(
+                "evidence_chain_ids", k.get("evidence_chain_ids", [])
+            ),
         }
         for k, n, d in zip(results, node_datas, node_degrees)
         if n is not None
@@ -4649,6 +4689,16 @@ async def _get_edge_data(
                 "src_id": k["src_id"],
                 "tgt_id": k["tgt_id"],
                 "created_at": k.get("created_at", None),
+                "relation_type": edge_props.get(
+                    "relation_type", k.get("relation_type", "related")
+                ),
+                "evidence_level": edge_props.get(
+                    "evidence_level", k.get("evidence_level", "B")
+                ),
+                "source_provenance": edge_props.get(
+                    "source_provenance", k.get("source_provenance", [])
+                ),
+                "file_path": edge_props.get("file_path", k.get("file_path", "")),
                 **edge_props,
             }
             edge_datas.append(combined)

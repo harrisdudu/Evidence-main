@@ -70,6 +70,7 @@ async def update_evidence_fields(rag: LightRAG):
                 "evidence_level": node_data.get("evidence_level", "B"),
                 "scene_tags": node_data.get("scene_tags", []),
                 "source_provenance": node_data.get("source_provenance", []),
+                "evidence_chain_ids": node_data.get("evidence_chain_ids", []),
             }
 
         if entity_updates:
@@ -90,10 +91,8 @@ async def update_evidence_fields(rag: LightRAG):
 
     # 4. 更新关系向量数据库
     if rag.relationships_vdb and all_edges:
-    if rag.relationships_vdb and all_edges:
         logger.info("正在更新关系向量数据库...")
 
-        relationship_updates = {}
         relationship_updates = {}
         for edge in all_edges:
             edge_data = dict(edge)  # 复制数据

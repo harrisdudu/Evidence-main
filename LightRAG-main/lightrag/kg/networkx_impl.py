@@ -1,4 +1,5 @@
 import os
+import json
 from dataclasses import dataclass
 from typing import final
 
@@ -23,6 +24,32 @@ load_dotenv(dotenv_path=".env", override=False)
 @final
 @dataclass
 class NetworkXStorage(BaseGraphStorage):
+    @staticmethod
+    def _encode_props(data: dict) -> dict:
+        out = {}
+        for k, v in (data or {}).items():
+            if k in {"scene_tags", "source_provenance", "evidence_chain_ids"} and not (
+                v is None or isinstance(v, str)
+            ):
+                out[k] = json.dumps(v, ensure_ascii=False)
+            else:
+                out[k] = v
+        return out
+
+    @staticmethod
+    def _decode_props(data: dict | None) -> dict | None:
+        if data is None:
+            return None
+        out = dict(data)
+        for k in {"scene_tags", "source_provenance", "evidence_chain_ids"}:
+            v = out.get(k)
+            if isinstance(v, str):
+                try:
+                    out[k] = json.loads(v)
+                except Exception:
+                    pass
+        return out
+
     @staticmethod
     def load_nx_graph(file_name) -> nx.Graph:
         if os.path.exists(file_name):
@@ -105,7 +132,7 @@ class NetworkXStorage(BaseGraphStorage):
 
     async def get_node(self, node_id: str) -> dict[str, str] | None:
         graph = await self._get_graph()
-        return graph.nodes.get(node_id)
+        return NetworkXStorage._decode_props(graph.nodes.get(node_id))
 
     async def node_degree(self, node_id: str) -> int:
         graph = await self._get_graph()
@@ -121,7 +148,9 @@ class NetworkXStorage(BaseGraphStorage):
         self, source_node_id: str, target_node_id: str
     ) -> dict[str, str] | None:
         graph = await self._get_graph()
-        return graph.edges.get((source_node_id, target_node_id))
+        return NetworkXStorage._decode_props(
+            graph.edges.get((source_node_id, target_node_id))
+        )
 
     async def get_node_edges(self, source_node_id: str) -> list[tuple[str, str]] | None:
         graph = await self._get_graph()
@@ -129,15 +158,25 @@ class NetworkXStorage(BaseGraphStorage):
             return list(graph.edges(source_node_id))
         return None
 
-    async def upsert_node(self, node_id: str, node_data: dict[str, str]) -> None:
+    async def upsert_node(
+        self, node_id: str | None = None, node_data: dict[str, str] | None = None, **kwargs
+    ) -> None:
         """
         Importance notes:
         1. Changes will be persisted to disk during the next index_done_callback
         2. Only one process should updating the storage at a time before index_done_callback,
            KG-storage-log should be used to avoid data corruption
         """
+        if node_data is None and kwargs:
+            node_data = dict(kwargs)
+        if node_id is None and node_data is not None and "entity_id" in node_data:
+            node_id = node_data.get("entity_id")
+        if node_data is None or node_id is None:
+            raise ValueError("NetworkX: upsert_node requires node_id and node_data")
+        if node_data.get("entity_id") != node_id:
+            node_data = {**node_data, "entity_id": node_id}
         graph = await self._get_graph()
-        graph.add_node(node_id, **node_data)
+        graph.add_node(node_id, **NetworkXStorage._encode_props(node_data))
 
     async def upsert_edge(
         self, source_node_id: str, target_node_id: str, edge_data: dict[str, str]
@@ -149,7 +188,11 @@ class NetworkXStorage(BaseGraphStorage):
            KG-storage-log should be used to avoid data corruption
         """
         graph = await self._get_graph()
-        graph.add_edge(source_node_id, target_node_id, **edge_data)
+        graph.add_edge(
+            source_node_id,
+            target_node_id,
+            **NetworkXStorage._encode_props(edge_data),
+        )
 
     async def delete_node(self, node_id: str) -> None:
         """

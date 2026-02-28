@@ -2579,6 +2579,40 @@ class PGVectorStorage(BaseVectorStorage):
         return migrated_count
 
     @staticmethod
+    async def _pg_ensure_evidence_columns(
+        db: PostgreSQLDB, table_name: str, base_table: str
+    ) -> None:
+        if base_table in {"LIGHTRAG_VDB_CHUNKS", "LIGHTRAG_VDB_ENTITY"}:
+            required = {
+                "evidence_level": "VARCHAR(8) NULL DEFAULT 'B'",
+                "scene_tags": "JSONB NULL DEFAULT '[]'::jsonb",
+                "source_provenance": "JSONB NULL DEFAULT '[]'::jsonb",
+            }
+            if base_table == "LIGHTRAG_VDB_ENTITY":
+                required["evidence_chain_ids"] = "JSONB NULL DEFAULT '[]'::jsonb"
+        elif base_table == "LIGHTRAG_VDB_RELATION":
+            required = {
+                "relation_type": "VARCHAR(32) NULL DEFAULT 'related'",
+                "evidence_level": "VARCHAR(8) NULL DEFAULT 'B'",
+                "source_provenance": "JSONB NULL DEFAULT '[]'::jsonb",
+            }
+        else:
+            return
+
+        table_lower = table_name.lower()
+        rows = await db.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = $1",
+            [table_lower],
+            multirows=True,
+        )
+        existing = {r.get("column_name") for r in rows} if rows else set()
+
+        for col, ddl in required.items():
+            if col in existing:
+                continue
+            await db.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {ddl}", None)
+
+    @staticmethod
     async def setup_table(
         db: PostgreSQLDB,
         table_name: str,
@@ -2611,6 +2645,12 @@ class PGVectorStorage(BaseVectorStorage):
         legacy_exists = legacy_table_name and await db.check_table_exists(
             legacy_table_name
         )
+        if new_table_exists:
+            await PGVectorStorage._pg_ensure_evidence_columns(db, table_name, base_table)
+        if legacy_exists:
+            await PGVectorStorage._pg_ensure_evidence_columns(
+                db, legacy_table_name, base_table
+            )
 
         # Case 1: Only new table exists or new table is the same as legacy table
         #         No data migration needed, ensuring index is created then return
@@ -2695,6 +2735,7 @@ class PGVectorStorage(BaseVectorStorage):
                 db, table_name, base_table, embedding_dim
             )
             logger.info(f"PostgreSQL: New table '{table_name}' created successfully")
+            await PGVectorStorage._pg_ensure_evidence_columns(db, table_name, base_table)
 
             if not legacy_exists:
                 await db._create_vector_index(table_name, embedding_dim)
@@ -2843,6 +2884,56 @@ class PGVectorStorage(BaseVectorStorage):
             await ClientManager.release_client(self.db)
             self.db = None
 
+    @staticmethod
+    def _normalize_evidence_level(value: Any) -> str:
+        if value is None:
+            return "B"
+        if isinstance(value, str):
+            v = value.strip()
+        elif hasattr(value, "value") and isinstance(getattr(value, "value"), str):
+            v = getattr(value, "value").strip()
+        else:
+            v = str(value).strip()
+        return v if v in {"S", "A", "B", "C"} else "B"
+
+    @staticmethod
+    def _normalize_scene_tags(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return [str(x) for x in value if x is not None and str(x)]
+        return []
+
+    @staticmethod
+    def _normalize_source_provenance(value: Any) -> list[dict[str, Any]]:
+        if value is None:
+            return []
+        if isinstance(value, dict):
+            return [value]
+        if isinstance(value, list):
+            return [x for x in value if isinstance(x, dict)]
+        return []
+
+    @staticmethod
+    def _normalize_evidence_chain_ids(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return [str(x) for x in value if x is not None and str(x)]
+        return []
+
+    @staticmethod
+    def _normalize_relation_type(value: Any) -> str:
+        if value is None:
+            return "related"
+        if isinstance(value, str):
+            v = value.strip()
+        elif hasattr(value, "value") and isinstance(getattr(value, "value"), str):
+            v = getattr(value, "value").strip()
+        else:
+            v = str(value).strip()
+        return v if v else "related"
+
     def _upsert_chunks(
         self, item: dict[str, Any], current_time: datetime.datetime
     ) -> tuple[str, tuple[Any, ...]]:
@@ -2865,8 +2956,11 @@ class PGVectorStorage(BaseVectorStorage):
                 item["content"],  # $6
                 item["__vector__"],  # $7 - numpy array, handled by pgvector codec
                 item["file_path"],  # $8
-                current_time,  # $9
-                current_time,  # $10
+                self._normalize_evidence_level(item.get("evidence_level")),  # $9
+                self._normalize_scene_tags(item.get("scene_tags")),  # $10
+                self._normalize_source_provenance(item.get("source_provenance")),  # $11
+                current_time,  # $12
+                current_time,  # $13
             )
         except Exception as e:
             logger.error(
@@ -2900,8 +2994,12 @@ class PGVectorStorage(BaseVectorStorage):
             item["__vector__"],  # $5 - numpy array, handled by pgvector codec
             chunk_ids,  # $6
             item.get("file_path", None),  # $7
-            current_time,  # $8
-            current_time,  # $9
+            self._normalize_evidence_level(item.get("evidence_level")),  # $8
+            self._normalize_scene_tags(item.get("scene_tags")),  # $9
+            self._normalize_source_provenance(item.get("source_provenance")),  # $10
+            self._normalize_evidence_chain_ids(item.get("evidence_chain_ids")),  # $11
+            current_time,  # $12
+            current_time,  # $13
         )
         return upsert_sql, values
 
@@ -2932,8 +3030,11 @@ class PGVectorStorage(BaseVectorStorage):
             item["__vector__"],  # $6 - numpy array, handled by pgvector codec
             chunk_ids,  # $7
             item.get("file_path", None),  # $8
-            current_time,  # $9
-            current_time,  # $10
+            self._normalize_relation_type(item.get("relation_type")),  # $9
+            self._normalize_evidence_level(item.get("evidence_level")),  # $10
+            self._normalize_source_provenance(item.get("source_provenance")),  # $11
+            current_time,  # $12
+            current_time,  # $13
         )
         return upsert_sql, values
 
@@ -5434,6 +5535,9 @@ TABLES = {
                     content TEXT,
                     content_vector VECTOR(dimension),
                     file_path TEXT NULL,
+                    evidence_level VARCHAR(8) NULL DEFAULT 'B',
+                    scene_tags JSONB NULL DEFAULT '[]'::jsonb,
+                    source_provenance JSONB NULL DEFAULT '[]'::jsonb,
                     create_time TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
                     update_time TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
 	                CONSTRAINT LIGHTRAG_VDB_CHUNKS_PK PRIMARY KEY (workspace, id)
@@ -5450,6 +5554,10 @@ TABLES = {
                     update_time TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
                     chunk_ids VARCHAR(255)[] NULL,
                     file_path TEXT NULL,
+                    evidence_level VARCHAR(8) NULL DEFAULT 'B',
+                    scene_tags JSONB NULL DEFAULT '[]'::jsonb,
+                    source_provenance JSONB NULL DEFAULT '[]'::jsonb,
+                    evidence_chain_ids JSONB NULL DEFAULT '[]'::jsonb,
 	                CONSTRAINT LIGHTRAG_VDB_ENTITY_PK PRIMARY KEY (workspace, id)
                     )"""
     },
@@ -5465,6 +5573,9 @@ TABLES = {
                     update_time TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
                     chunk_ids VARCHAR(255)[] NULL,
                     file_path TEXT NULL,
+                    relation_type VARCHAR(32) NULL DEFAULT 'related',
+                    evidence_level VARCHAR(8) NULL DEFAULT 'B',
+                    source_provenance JSONB NULL DEFAULT '[]'::jsonb,
 	                CONSTRAINT LIGHTRAG_VDB_RELATION_PK PRIMARY KEY (workspace, id)
                     )"""
     },
@@ -5687,8 +5798,8 @@ SQL_TEMPLATES = {
     # SQL for VectorStorage
     "upsert_chunk": """INSERT INTO {table_name} (workspace, id, tokens,
                       chunk_order_index, full_doc_id, content, content_vector, file_path,
-                      create_time, update_time)
-                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                      evidence_level, scene_tags, source_provenance, create_time, update_time)
+                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                       ON CONFLICT (workspace,id) DO UPDATE
                       SET tokens=EXCLUDED.tokens,
                       chunk_order_index=EXCLUDED.chunk_order_index,
@@ -5696,22 +5807,29 @@ SQL_TEMPLATES = {
                       content = EXCLUDED.content,
                       content_vector=EXCLUDED.content_vector,
                       file_path=EXCLUDED.file_path,
+                      evidence_level=EXCLUDED.evidence_level,
+                      scene_tags=EXCLUDED.scene_tags,
+                      source_provenance=EXCLUDED.source_provenance,
                       update_time = EXCLUDED.update_time
                      """,
     "upsert_entity": """INSERT INTO {table_name} (workspace, id, entity_name, content,
-                      content_vector, chunk_ids, file_path, create_time, update_time)
-                      VALUES ($1, $2, $3, $4, $5, $6::varchar[], $7, $8, $9)
+                      content_vector, chunk_ids, file_path, evidence_level, scene_tags, source_provenance, evidence_chain_ids, create_time, update_time)
+                      VALUES ($1, $2, $3, $4, $5, $6::varchar[], $7, $8, $9, $10, $11, $12, $13)
                       ON CONFLICT (workspace,id) DO UPDATE
                       SET entity_name=EXCLUDED.entity_name,
                       content=EXCLUDED.content,
                       content_vector=EXCLUDED.content_vector,
                       chunk_ids=EXCLUDED.chunk_ids,
                       file_path=EXCLUDED.file_path,
+                      evidence_level=EXCLUDED.evidence_level,
+                      scene_tags=EXCLUDED.scene_tags,
+                      source_provenance=EXCLUDED.source_provenance,
+                      evidence_chain_ids=EXCLUDED.evidence_chain_ids,
                       update_time=EXCLUDED.update_time
                      """,
     "upsert_relationship": """INSERT INTO {table_name} (workspace, id, source_id,
-                      target_id, content, content_vector, chunk_ids, file_path, create_time, update_time)
-                      VALUES ($1, $2, $3, $4, $5, $6, $7::varchar[], $8, $9, $10)
+                      target_id, content, content_vector, chunk_ids, file_path, relation_type, evidence_level, source_provenance, create_time, update_time)
+                      VALUES ($1, $2, $3, $4, $5, $6, $7::varchar[], $8, $9, $10, $11, $12, $13)
                       ON CONFLICT (workspace,id) DO UPDATE
                       SET source_id=EXCLUDED.source_id,
                       target_id=EXCLUDED.target_id,
@@ -5719,11 +5837,18 @@ SQL_TEMPLATES = {
                       content_vector=EXCLUDED.content_vector,
                       chunk_ids=EXCLUDED.chunk_ids,
                       file_path=EXCLUDED.file_path,
+                      relation_type=EXCLUDED.relation_type,
+                      evidence_level=EXCLUDED.evidence_level,
+                      source_provenance=EXCLUDED.source_provenance,
                       update_time = EXCLUDED.update_time
                      """,
     "relationships": """
                      SELECT r.source_id AS src_id,
                             r.target_id AS tgt_id,
+                            r.file_path,
+                            r.relation_type,
+                            r.evidence_level,
+                            r.source_provenance,
                             EXTRACT(EPOCH FROM r.create_time)::BIGINT AS created_at
                      FROM {table_name} r
                      WHERE r.workspace = $1
@@ -5733,6 +5858,11 @@ SQL_TEMPLATES = {
                      """,
     "entities": """
                 SELECT e.entity_name,
+                       e.file_path,
+                       e.evidence_level,
+                       e.scene_tags,
+                       e.source_provenance,
+                       e.evidence_chain_ids,
                        EXTRACT(EPOCH FROM e.create_time)::BIGINT AS created_at
                 FROM {table_name} e
                 WHERE e.workspace = $1
@@ -5744,6 +5874,9 @@ SQL_TEMPLATES = {
               SELECT c.id,
                      c.content,
                      c.file_path,
+                     c.evidence_level,
+                     c.scene_tags,
+                     c.source_provenance,
                      EXTRACT(EPOCH FROM c.create_time)::BIGINT AS created_at
               FROM {table_name} c
               WHERE c.workspace = $1

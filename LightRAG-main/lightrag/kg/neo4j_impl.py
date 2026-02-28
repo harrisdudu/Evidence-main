@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from dataclasses import dataclass
 from typing import final
 import configparser
@@ -89,6 +90,32 @@ class Neo4JStorage(BaseGraphStorage):
             )
 
         self._driver = None
+
+    @staticmethod
+    def _sanitize_properties(properties: dict) -> dict:
+        out = {}
+        for k, v in (properties or {}).items():
+            if isinstance(v, dict) or (
+                isinstance(v, list) and any(isinstance(x, dict) for x in v)
+            ):
+                out[k] = json.dumps(v, ensure_ascii=False)
+            else:
+                out[k] = v
+        return out
+
+    @staticmethod
+    def _decode_properties(properties: dict | None) -> dict | None:
+        if properties is None:
+            return None
+        out = dict(properties)
+        for k in {"scene_tags", "source_provenance", "evidence_chain_ids"}:
+            v = out.get(k)
+            if isinstance(v, str) and v and v[0] in "[{":
+                try:
+                    out[k] = json.loads(v)
+                except Exception:
+                    pass
+        return out
 
     def _get_workspace_label(self) -> str:
         """Return workspace label (guaranteed non-empty during initialization)"""
@@ -544,7 +571,7 @@ class Neo4JStorage(BaseGraphStorage):
                                 if label != workspace_label
                             ]
                         # logger.debug(f"Neo4j query node {query} return: {node_dict}")
-                        return node_dict
+                        return Neo4JStorage._decode_properties(node_dict)
                     return None
                 finally:
                     await result.consume()  # Ensure result is fully consumed
@@ -587,7 +614,7 @@ class Neo4JStorage(BaseGraphStorage):
                         for label in node_dict["labels"]
                         if label != workspace_label
                     ]
-                nodes[entity_id] = node_dict
+                nodes[entity_id] = Neo4JStorage._decode_properties(node_dict)
             await result.consume()  # Make sure to consume the result fully
             return nodes
 
@@ -766,7 +793,9 @@ class Neo4JStorage(BaseGraphStorage):
                         )
                     if records:
                         try:
-                            edge_result = dict(records[0]["edge_properties"])
+                            edge_result = Neo4JStorage._decode_properties(
+                                dict(records[0]["edge_properties"])
+                            )
                             # logger.debug(f"Result: {edge_result}")
                             # Ensure required keys exist with defaults
                             required_keys = {
@@ -843,7 +872,9 @@ class Neo4JStorage(BaseGraphStorage):
                 tgt = record["tgt_id"]
                 edges = record["edges"]
                 if edges and len(edges) > 0:
-                    edge_props = edges[0]  # choose the first if multiple exist
+                    edge_props = Neo4JStorage._decode_properties(
+                        edges[0]
+                    )  # choose the first if multiple exist
                     # Ensure required keys exist with defaults
                     for key, default in {
                         "weight": 1.0,
@@ -1008,7 +1039,9 @@ class Neo4JStorage(BaseGraphStorage):
             )
         ),
     )
-    async def upsert_node(self, node_id: str, node_data: dict[str, str]) -> None:
+    async def upsert_node(
+        self, node_id: str | None = None, node_data: dict[str, str] | None = None, **kwargs
+    ) -> None:
         """
         Upsert a node in the Neo4j database.
 
@@ -1017,7 +1050,15 @@ class Neo4JStorage(BaseGraphStorage):
             node_data: Dictionary of node properties
         """
         workspace_label = self._get_workspace_label()
-        properties = node_data
+        if node_data is None and kwargs:
+            node_data = dict(kwargs)
+        if node_id is None and node_data is not None and "entity_id" in node_data:
+            node_id = node_data.get("entity_id")
+        if node_data is None or node_id is None:
+            raise ValueError("Neo4j: upsert_node requires node_id and node_data")
+        if node_data.get("entity_id") != node_id:
+            node_data = {**node_data, "entity_id": node_id}
+        properties = Neo4JStorage._sanitize_properties(node_data)
         entity_type = properties["entity_type"]
         if "entity_id" not in properties:
             raise ValueError("Neo4j: node properties must contain an 'entity_id' field")
@@ -1073,7 +1114,7 @@ class Neo4JStorage(BaseGraphStorage):
             ValueError: If either source or target node does not exist or is not unique
         """
         try:
-            edge_properties = edge_data
+            edge_properties = Neo4JStorage._sanitize_properties(edge_data)
             async with self._driver.session(database=self._DATABASE) as session:
 
                 async def execute_upsert(tx: AsyncManagedTransaction):
@@ -1641,7 +1682,7 @@ class Neo4JStorage(BaseGraphStorage):
                 node_dict = dict(node)
                 # Add node id (entity_id) to the dictionary for easier access
                 node_dict["id"] = node_dict.get("entity_id")
-                nodes.append(node_dict)
+                nodes.append(Neo4JStorage._decode_properties(node_dict))
             await result.consume()
             return nodes
 
@@ -1662,7 +1703,7 @@ class Neo4JStorage(BaseGraphStorage):
             result = await session.run(query)
             edges = []
             async for record in result:
-                edge_properties = record["properties"]
+                edge_properties = Neo4JStorage._decode_properties(record["properties"])
                 edge_properties["source"] = record["source"]
                 edge_properties["target"] = record["target"]
                 edges.append(edge_properties)

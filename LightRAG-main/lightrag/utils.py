@@ -3275,6 +3275,12 @@ def convert_to_user_format(
                     "source_id": original_entity.get("source_id", ""),
                     "file_path": original_entity.get("file_path", "unknown_source"),
                     "created_at": original_entity.get("created_at", ""),
+                    "evidence_level": original_entity.get("evidence_level", "B"),
+                    "scene_tags": original_entity.get("scene_tags", []),
+                    "source_provenance": original_entity.get("source_provenance", []),
+                    "evidence_chain_ids": original_entity.get(
+                        "evidence_chain_ids", []
+                    ),
                 }
             )
         else:
@@ -3287,6 +3293,10 @@ def convert_to_user_format(
                     "source_id": entity.get("source_id", ""),
                     "file_path": entity.get("file_path", "unknown_source"),
                     "created_at": entity.get("created_at", ""),
+                    "evidence_level": entity.get("evidence_level", "B"),
+                    "scene_tags": entity.get("scene_tags", []),
+                    "source_provenance": entity.get("source_provenance", []),
+                    "evidence_chain_ids": entity.get("evidence_chain_ids", []),
                 }
             )
 
@@ -3314,6 +3324,11 @@ def convert_to_user_format(
                     "source_id": original_relation.get("source_id", ""),
                     "file_path": original_relation.get("file_path", "unknown_source"),
                     "created_at": original_relation.get("created_at", ""),
+                    "relation_type": original_relation.get("relation_type", "related"),
+                    "evidence_level": original_relation.get("evidence_level", "B"),
+                    "source_provenance": original_relation.get(
+                        "source_provenance", []
+                    ),
                 }
             )
         else:
@@ -3328,6 +3343,9 @@ def convert_to_user_format(
                     "source_id": relation.get("source_id", ""),
                     "file_path": relation.get("file_path", "unknown_source"),
                     "created_at": relation.get("created_at", ""),
+                    "relation_type": relation.get("relation_type", "related"),
+                    "evidence_level": relation.get("evidence_level", "B"),
+                    "source_provenance": relation.get("source_provenance", []),
                 }
             )
 
@@ -3339,6 +3357,9 @@ def convert_to_user_format(
             "content": chunk.get("content", ""),
             "file_path": chunk.get("file_path", "unknown_source"),
             "chunk_id": chunk.get("chunk_id", ""),
+            "evidence_level": chunk.get("evidence_level", "B"),
+            "scene_tags": chunk.get("scene_tags", []),
+            "source_provenance": chunk.get("source_provenance", []),
         }
         formatted_chunks.append(chunk_data)
 

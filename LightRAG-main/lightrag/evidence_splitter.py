@@ -1550,3 +1550,106 @@ def create_evidence_chunk_with_industry(
         sub_industry=scene_type,
         cross_domain_tags=[],
     )
+
+
+
+# ============ LightRAG Integration ============
+
+
+def evidence_chunking_func(
+    tokenizer,
+    content: str,
+    split_by_character: str | None = None,
+    split_by_character_only: bool = False,
+    chunk_overlap_token_size: int = 100,
+    chunk_token_size: int = 1200,
+    scene_type: str | None = None,
+    metadata: dict | None = None,
+) -> list[dict]:
+    """
+    LightRAG 兼容的证据链分块函数。
+
+    Args:
+        tokenizer: LightRAG 的 tokenizer
+        content: 待分块文本
+        split_by_character: 按特定字符分割
+        split_by_character_only: 仅按字符分割
+        chunk_overlap_token_size: 重叠 token 数
+        chunk_token_size: 每块 token 数
+        scene_type: 场景类型（可选，不指定则自动检测）
+        metadata: 元数据（如 file_path, page_num 等）
+
+    Returns:
+        符合 LightRAG 要求的 dict 列表
+    """
+    import re
+    from typing import Dict, List
+
+    metadata = metadata or {}
+
+    # 如果指定了 scene_type，直接使用
+    if scene_type:
+        splitter = EvidenceSplitter(scene_type=scene_type)
+        chunks = splitter.split(content, metadata)
+        return [
+            {
+                "content": chunk.content,
+                "chunk_index": chunk.chunk_index,
+                "scene_category": chunk.scene_category.value if hasattr(chunk.scene_category, 'value') else str(chunk.scene_category),
+                "scene_tags": chunk.scene_tags,
+                "evidence_level": chunk.evidence_level,
+                "source_provenance": chunk.provenance or {},
+                "industry": chunk.industry,
+                "sub_industry": chunk.sub_industry,
+            }
+            for chunk in chunks
+        ]
+
+    # 自动检测场景类型
+    splitter = EvidenceSplitter()
+    detected_scene = splitter._detect_scene_type(content, metadata)
+
+    # 根据场景类型分块
+    if detected_scene:
+        splitter = EvidenceSplitter(scene_type=detected_scene)
+        chunks = splitter.split(content, metadata)
+        return [
+            {
+                "content": chunk.content,
+                "chunk_index": chunk.chunk_index,
+                "scene_category": chunk.scene_category.value if hasattr(chunk.scene_category, 'value') else str(chunk.scene_category),
+                "scene_tags": chunk.scene_tags,
+                "evidence_level": chunk.evidence_level,
+                "source_provenance": chunk.provenance or {},
+                "industry": chunk.industry,
+                "sub_industry": chunk.sub_industry,
+            }
+            for chunk in chunks
+        ]
+
+    # 如果无法检测场景类型，回退到默认分块方式
+    from lightrag.utils import chunking_by_token_size
+
+    # 调用默认分块函数
+    default_chunks = chunking_by_token_size(
+        tokenizer,
+        content,
+        split_by_character,
+        split_by_character_only,
+        chunk_overlap_token_size,
+        chunk_token_size,
+    )
+
+    # 添加默认证据字段
+    return [
+        {
+            **chunk,
+            "scene_tags": ["通用"],
+            "evidence_level": "B",
+            "scene_category": "general",
+            "provenance": {},
+            "industry": "通用",
+            "sub_industry": "通用",
+        }
+        for chunk in default_chunks
+    ]
