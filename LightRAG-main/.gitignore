@@ -77,3 +77,6 @@ memory-bank
 
 # Claude Code
 CLAUDE.md
+
+# OS specific files
+nul

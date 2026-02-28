@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lightrag</title>
+    <style>
+      html { background-color: hsl(0 0% 100%); }
+      html.dark { background-color: hsl(240 10% 3.9%); }
+      #boot { padding: 16px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: hsl(240 10% 3.9%); }
+      html.dark #boot { color: hsl(0 0% 98%); }
+    </style>
+    <script>
+      (() => {
+        try {
+          const raw = localStorage.getItem('settings-storage')
+          const storedTheme = raw ? JSON.parse(raw)?.state?.theme : null
+          const theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system'
+          const root = document.documentElement
+          root.classList.remove('light', 'dark')
+          if (theme === 'system') {
+            root.classList.add(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          } else {
+            root.classList.add(theme)
+          }
+        } catch {
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"><div id="boot">Loading...</div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
