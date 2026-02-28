@@ -1136,6 +1136,10 @@ async def _rebuild_single_entity(
                 else current_entity.get("file_path", "unknown_source"),
                 "created_at": int(time.time()),
                 "truncate": truncation_info,
+                # Evidence 证据链增强字段
+                "evidence_level": current_entity.get("evidence_level", "B"),
+                "scene_tags": current_entity.get("scene_tags", []),
+                "source_provenance": current_entity.get("source_provenance", []),
             }
             await knowledge_graph_inst.upsert_node(entity_name, updated_entity_data)
 
@@ -1498,6 +1502,10 @@ async def _rebuild_single_relationship(
         if file_paths_list
         else current_relationship.get("file_path", "unknown_source"),
         "truncate": truncation_info,
+        # Evidence 证据链增强字段
+        "relation_type": current_relationship.get("relation_type", "related"),
+        "evidence_level": current_relationship.get("evidence_level", "B"),
+        "source_provenance": current_relationship.get("source_provenance", []),
     }
 
     # Ensure both endpoint nodes exist before writing the edge back
@@ -1521,6 +1529,10 @@ async def _rebuild_single_relationship(
                 "file_path": node_file_path,
                 "created_at": node_created_at,
                 "truncate": "",
+                # Evidence 证据链增强字段
+                "evidence_level": "B",
+                "scene_tags": [],
+                "source_provenance": [],
             }
             await knowledge_graph_inst.upsert_node(node_id, node_data=node_data)
 
@@ -2935,6 +2947,9 @@ async def extract_entities(
             use_llm_func,
             system_prompt=entity_extraction_system_prompt,
             llm_response_cache=llm_response_cache,
+            max_completion_tokens=global_config.get(
+                "entity_extract_max_completion_tokens", None
+            ),
             cache_type="extract",
             chunk_id=chunk_key,
             cache_keys_collector=cache_keys_collector,
@@ -2982,6 +2997,9 @@ async def extract_entities(
                     system_prompt=entity_extraction_system_prompt,
                     llm_response_cache=llm_response_cache,
                     history_messages=history,
+                    max_completion_tokens=global_config.get(
+                        "entity_extract_max_completion_tokens", None
+                    ),
                     cache_type="extract",
                     chunk_id=chunk_key,
                     cache_keys_collector=cache_keys_collector,

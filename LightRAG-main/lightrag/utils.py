@@ -2015,6 +2015,7 @@ async def use_llm_func_with_cache(
     llm_response_cache: "BaseKVStorage | None" = None,
     system_prompt: str | None = None,
     max_tokens: int = None,
+    max_completion_tokens: int | None = None,
     history_messages: list[dict[str, str]] = None,
     cache_type: str = "extract",
     chunk_id: str | None = None,
@@ -2032,6 +2033,7 @@ async def use_llm_func_with_cache(
         use_llm_func: LLM function with higher priority
         llm_response_cache: Cache storage instance
         max_tokens: Maximum tokens for generation
+        max_completion_tokens: Maximum completion tokens for generation (OpenAI-compatible)
         history_messages: History messages list
         cache_type: Type of cache
         chunk_id: Chunk identifier to store in cache
@@ -2101,6 +2103,8 @@ async def use_llm_func_with_cache(
             kwargs["history_messages"] = safe_history_messages
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        if max_completion_tokens is not None:
+            kwargs["max_completion_tokens"] = max_completion_tokens
 
         res: str = await use_llm_func(
             safe_user_prompt, system_prompt=safe_system_prompt, **kwargs
@@ -2135,6 +2139,8 @@ async def use_llm_func_with_cache(
         kwargs["history_messages"] = safe_history_messages
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
+    if max_completion_tokens is not None:
+        kwargs["max_completion_tokens"] = max_completion_tokens
 
     try:
         res = await use_llm_func(

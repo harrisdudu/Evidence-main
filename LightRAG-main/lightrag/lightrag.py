@@ -57,6 +57,7 @@ from lightrag.constants import (
     DEFAULT_MAX_SOURCE_IDS_PER_ENTITY,
     DEFAULT_MAX_SOURCE_IDS_PER_RELATION,
     DEFAULT_MAX_EXTRACT_INPUT_TOKENS,
+    DEFAULT_ENTITY_EXTRACT_MAX_COMPLETION_TOKENS,
     DEFAULT_ENTITY_TYPES,
     DEFAULT_SUMMARY_LANGUAGE,
     DEFAULT_LLM_TIMEOUT,
@@ -246,6 +247,15 @@ class LightRAG:
         )
     )
     """Maximum input tokens allowed for entity extraction (including history and gleaning)."""
+
+    entity_extract_max_completion_tokens: int = field(
+        default=get_env_value(
+            "ENTITY_EXTRACT_MAX_COMPLETION_TOKENS",
+            DEFAULT_ENTITY_EXTRACT_MAX_COMPLETION_TOKENS,
+            int,
+        )
+    )
+    """Maximum completion tokens for entity extraction (OpenAI-compatible)."""
 
     force_llm_summary_on_merge: int = field(
         default=get_env_value(

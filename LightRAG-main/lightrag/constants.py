@@ -25,6 +25,8 @@ DEFAULT_SUMMARY_LENGTH_RECOMMENDED = 600
 DEFAULT_SUMMARY_CONTEXT_SIZE = 12000
 # Maximum input tokens allowed for entity extraction (including history and gleaning)
 DEFAULT_MAX_EXTRACT_INPUT_TOKENS = 12000
+# Maximum completion tokens for entity extraction (OpenAI-compatible)
+DEFAULT_ENTITY_EXTRACT_MAX_COMPLETION_TOKENS = 1024
 # Default entities to extract if ENTITY_TYPES is not specified in .env
 DEFAULT_ENTITY_TYPES = [
     "Person",

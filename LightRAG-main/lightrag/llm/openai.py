@@ -608,7 +608,7 @@ async def openai_complete_if_cache(
 
                     # Fallback for reasoning models if content is empty
                     if not final_content.strip() and reasoning_content:
-                        logger.warning(
+                        logger.debug(
                             "Content is empty but reasoning_content exists. Using reasoning_content as fallback."
                         )
                         final_content = reasoning_content

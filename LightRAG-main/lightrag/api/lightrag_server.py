@@ -529,10 +529,12 @@ def create_app(args):
             if history_messages is None:
                 history_messages = []
 
-            # Use pre-processed configuration to avoid repeated parsing
-            kwargs["timeout"] = llm_timeout
+            # Use pre-processed configuration to avoid repeated parsing.
+            # NOTE: per-call kwargs should be able to override defaults from config_cache.
+            merged_kwargs: dict[str, Any] = {"timeout": llm_timeout}
             if config_cache.openai_llm_options:
-                kwargs.update(config_cache.openai_llm_options)
+                merged_kwargs.update(config_cache.openai_llm_options)
+            merged_kwargs.update(kwargs)
 
             return await openai_complete_if_cache(
                 args.llm_model,
@@ -541,7 +543,7 @@ def create_app(args):
                 history_messages=history_messages,
                 base_url=args.llm_binding_host,
                 api_key=args.llm_binding_api_key,
-                **kwargs,
+                **merged_kwargs,
             )
 
         return optimized_openai_alike_model_complete
@@ -566,10 +568,12 @@ def create_app(args):
             if history_messages is None:
                 history_messages = []
 
-            # Use pre-processed configuration to avoid repeated parsing
-            kwargs["timeout"] = llm_timeout
+            # Use pre-processed configuration to avoid repeated parsing.
+            # NOTE: per-call kwargs should be able to override defaults from config_cache.
+            merged_kwargs: dict[str, Any] = {"timeout": llm_timeout}
             if config_cache.openai_llm_options:
-                kwargs.update(config_cache.openai_llm_options)
+                merged_kwargs.update(config_cache.openai_llm_options)
+            merged_kwargs.update(kwargs)
 
             return await azure_openai_complete_if_cache(
                 args.llm_model,
@@ -579,7 +583,7 @@ def create_app(args):
                 base_url=args.llm_binding_host,
                 api_key=os.getenv("AZURE_OPENAI_API_KEY", args.llm_binding_api_key),
                 api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview"),
-                **kwargs,
+                **merged_kwargs,
             )
 
         return optimized_azure_openai_model_complete
