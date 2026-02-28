@@ -548,6 +548,12 @@ async def openai_complete_if_cache(
 
     else:
         try:
+            if hasattr(response, "object") and getattr(response, "object", None) == "error":
+                logger.error(f"OpenAI API returned error object: {response}")
+                await openai_async_client.close()
+                raise ValueError(
+                    f"OpenAI API error object (non-retriable): {getattr(response, 'message', response)}"
+                )
             if (
                 not response
                 or not response.choices

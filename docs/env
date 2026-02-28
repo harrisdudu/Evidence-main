@@ -278,7 +278,11 @@ LLM_BINDING_HOST=http://172.16.0.28:30000/v1
 ### For vLLM/SGLang deployed models, or most of OpenAI compatible API provider
 # OPENAI_LLM_MAX_TOKENS=9000
 ### For OpenAI o1-mini or newer modles utilizes max_completion_tokens instead of max_tokens
-OPENAI_LLM_MAX_COMPLETION_TOKENS=9000
+OPENAI_LLM_MAX_COMPLETION_TOKENS=2048
+
+### Entity extraction (LLM)
+### Limit completion tokens for extraction to avoid context overflow in OpenAI-compatible providers
+ENTITY_EXTRACT_MAX_COMPLETION_TOKENS=1024
 
 ### use the following command to see all support options for Ollama LLM
 ### lightrag-server --llm-binding ollama --help
