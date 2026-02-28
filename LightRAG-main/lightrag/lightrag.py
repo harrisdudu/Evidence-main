@@ -56,6 +56,7 @@ from lightrag.constants import (
     DEFAULT_MAX_GRAPH_NODES,
     DEFAULT_MAX_SOURCE_IDS_PER_ENTITY,
     DEFAULT_MAX_SOURCE_IDS_PER_RELATION,
+    DEFAULT_MAX_EXTRACT_INPUT_TOKENS,
     DEFAULT_ENTITY_TYPES,
     DEFAULT_SUMMARY_LANGUAGE,
     DEFAULT_LLM_TIMEOUT,
@@ -238,6 +239,13 @@ class LightRAG:
         default=get_env_value("MAX_GLEANING", DEFAULT_MAX_GLEANING, int)
     )
     """Maximum number of entity extraction attempts for ambiguous content."""
+
+    max_extract_input_tokens: int = field(
+        default=get_env_value(
+            "MAX_EXTRACT_INPUT_TOKENS", DEFAULT_MAX_EXTRACT_INPUT_TOKENS, int
+        )
+    )
+    """Maximum input tokens allowed for entity extraction (including history and gleaning)."""
 
     force_llm_summary_on_merge: int = field(
         default=get_env_value(
