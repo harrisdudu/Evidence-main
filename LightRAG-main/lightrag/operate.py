@@ -1692,6 +1692,27 @@ async def _merge_nodes_then_upsert(
         if existing_desc:
             already_description.extend(existing_desc.split(GRAPH_FIELD_SEP))
 
+    # Extract evidence chain fields from nodes_data and already_node
+    evidence_level = "B"
+    scene_tags = []
+    source_provenance = []
+    for dp in nodes_data:
+        if dp.get("evidence_level"):
+            evidence_level = dp.get("evidence_level", "B")
+        if dp.get("scene_tags"):
+            scene_tags = dp.get("scene_tags", [])
+        if dp.get("source_provenance"):
+            source_provenance = dp.get("source_provenance", [])
+    if already_node:
+        if already_node.get("evidence_level"):
+            evidence_level = already_node.get("evidence_level", "B")
+        if already_node.get("scene_tags"):
+            scene_tags = already_node.get("scene_tags", [])
+        if already_node.get("source_provenance"):
+            source_provenance = already_node.get("source_provenance", [])
+
+    new_source_ids = [dp["source_id"] for dp in nodes_data if dp.get("source_id")]
+
     new_source_ids = [dp["source_id"] for dp in nodes_data if dp.get("source_id")]
 
     existing_full_source_ids = []
@@ -1913,6 +1934,18 @@ async def _merge_nodes_then_upsert(
 
     # 11. Update both graph and vector db
     node_data = dict(
+        entity_id=entity_name,
+        entity_type=entity_type,
+        description=description,
+        source_id=source_id,
+        file_path=file_path,
+        created_at=int(time.time()),
+        truncate=truncation_info,
+        # Evidence 证据链增强字段
+        evidence_level=evidence_level,
+        scene_tags=scene_tags,
+        source_provenance=source_provenance,
+    )
         entity_id=entity_name,
         entity_type=entity_type,
         description=description,
