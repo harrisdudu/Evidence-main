@@ -553,9 +553,11 @@ async def openai_complete_if_cache(
                 or not response.choices
                 or not hasattr(response.choices[0], "message")
             ):
-                logger.error("Invalid response from OpenAI API")
+                logger.error(f"Invalid response from OpenAI API. Response: {response}")
                 await openai_async_client.close()  # Ensure client is closed
-                raise InvalidResponseError("Invalid response from OpenAI API")
+                raise InvalidResponseError(
+                    f"Invalid response from OpenAI API: {response}"
+                )
 
             message = response.choices[0].message
 
@@ -604,11 +606,22 @@ async def openai_complete_if_cache(
                     # COT disabled, only use regular content
                     final_content = content or ""
 
+                    # Fallback for reasoning models if content is empty
+                    if not final_content.strip() and reasoning_content:
+                        logger.warning(
+                            "Content is empty but reasoning_content exists. Using reasoning_content as fallback."
+                        )
+                        final_content = reasoning_content
+
                 # Validate final content
                 if not final_content or final_content.strip() == "":
-                    logger.error("Received empty content from OpenAI API")
+                    logger.error(
+                        f"Received empty content from OpenAI API for model {model}. Response message: {message}"
+                    )
                     await openai_async_client.close()  # Ensure client is closed
-                    raise InvalidResponseError("Received empty content from OpenAI API")
+                    raise InvalidResponseError(
+                        f"Received empty content from OpenAI API for model {model}"
+                    )
 
             # Apply Unicode decoding to final content if needed
             if r"\u" in final_content:

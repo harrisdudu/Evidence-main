@@ -107,7 +107,7 @@ class PipelineCancelledException(Exception):
 
 
 class ChunkTokenLimitExceededError(ValueError):
-    """Raised when a chunk exceeds the configured token limit."""
+    """Raised when a chunk exceeds the configured token limit during splitting."""
 
     def __init__(
         self,
@@ -126,6 +126,25 @@ class ChunkTokenLimitExceededError(ValueError):
         self.chunk_tokens = chunk_tokens
         self.chunk_token_limit = chunk_token_limit
         self.chunk_preview = truncated_preview
+
+
+class ExtractionTokenLimitExceededError(ValueError):
+    """Raised when the prompt for extraction exceeds the model's token limit."""
+
+    def __init__(
+        self,
+        prompt_tokens: int,
+        max_tokens: int,
+        chunk_id: str | None = None,
+    ) -> None:
+        chunk_info = f" for chunk {chunk_id}" if chunk_id else ""
+        message = (
+            f"Extraction prompt tokens {prompt_tokens} exceeds max_extract_input_tokens {max_tokens}{chunk_info}."
+        )
+        super().__init__(message)
+        self.prompt_tokens = prompt_tokens
+        self.max_tokens = max_tokens
+        self.chunk_id = chunk_id
 
 
 class DataMigrationError(Exception):

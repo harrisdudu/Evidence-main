@@ -11,6 +11,7 @@ from collections import Counter, defaultdict
 from lightrag.exceptions import (
     PipelineCancelledException,
     ChunkTokenLimitExceededError,
+    ExtractionTokenLimitExceededError,
 )
 from lightrag.utils import (
     logger,
@@ -2912,6 +2913,22 @@ async def extract_entities(
         entity_continue_extraction_user_prompt = PROMPTS[
             "entity_continue_extraction_user_prompt"
         ].format(**{**context_base, "input_text": content})
+
+        # Calculate initial tokens to prevent context window overflow
+        tokenizer = global_config["tokenizer"]
+        max_input_tokens = global_config["max_extract_input_tokens"]
+        initial_token_count = len(
+            tokenizer.encode(
+                entity_extraction_system_prompt + entity_extraction_user_prompt
+            )
+        )
+
+        if initial_token_count > max_input_tokens:
+            raise ExtractionTokenLimitExceededError(
+                prompt_tokens=initial_token_count,
+                max_tokens=max_input_tokens,
+                chunk_id=chunk_key,
+            )
 
         final_result, timestamp = await use_llm_func_with_cache(
             entity_extraction_user_prompt,
