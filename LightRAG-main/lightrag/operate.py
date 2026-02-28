@@ -1936,6 +1936,10 @@ async def _merge_nodes_then_upsert(
                 "content": entity_content,
                 "source_id": source_id,
                 "file_path": file_path,
+                # Evidence 证据链增强字段
+                "evidence_level": node_data.get("evidence_level", "B"),
+                "scene_tags": node_data.get("scene_tags", []),
+                "source_provenance": node_data.get("source_provenance", []),
             }
         }
         await safe_vdb_operation_with_exception(
@@ -2284,6 +2288,10 @@ async def _merge_edges_then_upsert(
                         "source_id": source_id,
                         "entity_type": "UNKNOWN",
                         "file_path": file_path,
+                        # Evidence 证据链增强字段
+                        "evidence_level": "B",
+                        "scene_tags": [],
+                        "source_provenance": [],
                     }
                 }
                 await safe_vdb_operation_with_exception(
@@ -2390,6 +2398,10 @@ async def _merge_edges_then_upsert(
                             "file_path": existing_node.get(
                                 "file_path", "unknown_source"
                             ),
+                            # Evidence 证据链增强字段
+                            "evidence_level": existing_node.get("evidence_level", "B"),
+                            "scene_tags": existing_node.get("scene_tags", []),
+                            "source_provenance": existing_node.get("source_provenance", []),
                         }
                     }
                     await safe_vdb_operation_with_exception(
