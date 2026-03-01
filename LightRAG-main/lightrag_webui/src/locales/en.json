@@ -11,6 +11,7 @@
     "knowledgeGraph": "Knowledge Graph",
     "retrieval": "Retrieval",
     "api": "API",
+    "evidenceChain": "Evidence Chain",
     "projectRepository": "Project Repository",
     "logout": "Logout",
     "frontendNeedsRebuild": "Frontend needs rebuild",
@@ -461,5 +462,69 @@
     "prevPage": "Previous Page",
     "nextPage": "Next Page",
     "lastPage": "Last Page"
+  },
+  "evidence": {
+    "title": "Evidence Chain Retrieval",
+    "view_list": "List View",
+    "view_graph": "Graph View",
+    "query": {
+      "title": "Query Filters",
+      "evidence_level": "Evidence Level",
+      "relation_type": "Relation Type",
+      "scene_tag": "Scene Tag",
+      "keyword": "Keyword",
+      "keyword_placeholder": "Search entity name...",
+      "select_level": "Select level",
+      "select_type": "Select type",
+      "select_scene": "Select scene",
+      "sort_by": "Sort by",
+      "all": "All",
+      "relevance": "Relevance",
+      "level": "Level",
+      "confidence": "Confidence",
+      "update_time": "Update Time",
+      "reset": "Reset",
+      "search": "Search"
+    },
+    "stats": {
+      "title": "Evidence Statistics",
+      "no_data": "No data",
+      "total": "Total Evidence",
+      "by_level": "By Level",
+      "support_contradict": "Support vs Contradict",
+      "support": "Support",
+      "contradict": "Contradict",
+      "ratio": "Ratio"
+    },
+    "card": {
+      "confidence": "Confidence",
+      "page": "Page",
+      "page_num": "",
+      "related_chains": "Related Evidence Chains",
+      "view_details": "View Details"
+    },
+    "list": {
+      "no_results": "No evidence chain data",
+      "no_results_hint": "Try adjusting the filter criteria",
+      "total": "Total",
+      "results": "results"
+    },
+    "detail": {
+      "title": "Evidence Details",
+      "confidence": "Confidence",
+      "description": "Description",
+      "scene_tags": "Scene Tags",
+      "provenance": "Source Provenance",
+      "document": "Document",
+      "page": "Page",
+      "chunk": "Chunk ID",
+      "path": "Path",
+      "chains": "Related Evidence Chains",
+      "update_time": "Update Time"
+    },
+    "graph": {
+      "no_data": "No visualization data",
+      "legend": "Legend"
+    }
   }
 }

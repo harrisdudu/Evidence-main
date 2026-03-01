@@ -38,6 +38,7 @@ from lightrag.api.utils_api import (
     display_splash_screen,
     check_env_file,
 )
+from lightrag.api.routers.evidence_routes import create_evidence_routes
 from .config import (
     global_args,
     update_uvicorn_mode_config,
@@ -1109,6 +1110,7 @@ def create_app(args):
             addon_params={
                 "language": args.summary_language,
                 "entity_types": args.entity_types,
+                "enable_evidence": args.enable_evidence,
             },
             ollama_server_infos=ollama_server_infos,
         )
@@ -1126,6 +1128,9 @@ def create_app(args):
     )
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))
+
+    # Add evidence chain routes
+    app.include_router(create_evidence_routes(rag, api_key))
 
     # Add Ollama API routes
     ollama_api = OllamaAPI(rag, top_k=args.top_k, api_key=api_key)

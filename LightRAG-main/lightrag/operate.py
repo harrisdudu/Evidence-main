@@ -555,6 +555,10 @@ async def _handle_single_relationship_extraction(
             )
             return None
 
+        # Validate evidence_level - should be one of S, A, B, C
+        if evidence_level not in ("S", "A", "B", "C"):
+            evidence_level = "B"  # Default to B if invalid
+
         edge_source_id = chunk_key
         weight = (
             float(record_attributes[-1].strip('"').strip("'"))
@@ -1268,14 +1272,18 @@ async def _rebuild_single_entity(
 
         # Get edge data for all connected relationships
         for src_id, tgt_id in edges:
-            edge_data = await knowledge_graph_inst.get_edge(src_id, tgt_id)
-            if edge_data:
-                if edge_data.get("description"):
-                    relationship_descriptions.append(edge_data["description"])
+            try:
+                edge_data = await knowledge_graph_inst.get_edge(src_id, tgt_id)
+                if edge_data:
+                    if edge_data.get("description"):
+                        relationship_descriptions.append(edge_data["description"])
 
-                if edge_data.get("file_path"):
-                    edge_file_paths = edge_data["file_path"].split(GRAPH_FIELD_SEP)
-                    file_paths.update(edge_file_paths)
+                    if edge_data.get("file_path"):
+                        edge_file_paths = edge_data["file_path"].split(GRAPH_FIELD_SEP)
+                        file_paths.update(edge_file_paths)
+            except Exception as e:
+                logger.warning(f"Failed to get edge data for {src_id}->{tgt_id}: {e}")
+                continue
 
         # deduplicate descriptions
         description_list = list(dict.fromkeys(relationship_descriptions))
@@ -3058,8 +3066,10 @@ async def extract_entities(
         chunk_key = chunk_key_dp[0]
         chunk_dp = chunk_key_dp[1]
         content = chunk_dp["content"]
-        # Get file path from chunk data or use default
-        file_path = chunk_dp.get("file_path", "unknown_source")
+        
+        try:
+            # Get file path from chunk data or use default
+            file_path = chunk_dp.get("file_path", "unknown_source")
 
         # Create cache keys collector for batch processing
         cache_keys_collector = []

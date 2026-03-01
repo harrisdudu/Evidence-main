@@ -548,7 +548,7 @@ entity{tuple_delimiter}央行{tuple_delimiter}organization{tuple_delimiter}央�
 entity{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}regulation{tuple_delimiter}央行发布的关于完善结构性货币政策工具的通知文件。
 entity{tuple_delimiter}科技创新领域{tuple_delimiter}concept{tuple_delimiter}指涉及新技术、新产品、新工艺等创新活动的经济领域。
 entity{tuple_delimiter}科创企业{tuple_delimiter}organization{tuple_delimiter}指符合科创板上市条件的科技创新型企业。
-entity{tuple_delimiter}科创板{tuple_delimiter}market{tuple_delimiter}为科技创新企业服务的股票交易板块。
+entity{tuple_delimiter}科创板{tuple_delimiter}concept{tuple_delimiter}为科技创新企业服务的股票交易板块。
 entity{tuple_delimiter}Wind{tuple_delimiter}organization{tuple_delimiter}权威金融数据提供平台。
 relation{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}科技创新领域{tuple_delimiter}causal{tuple_delimiter}S{tuple_delimiter}政策扩大适用,结构性货币工具{tuple_delimiter}该通知将结构性货币政策工具适用范围扩大至科技创新领域，为科创企业提供融资支持。{tuple_delimiter}chain_银发_causal_001
 relation{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}科创企业{tuple_delimiter}support{tuple_delimiter}S{tuple_delimiter}融资成本降低,政策支持{tuple_delimiter}该通知明确将降低科创企业融资成本。{tuple_delimiter}chain_银发_support_002
