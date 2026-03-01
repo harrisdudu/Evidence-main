@@ -479,12 +479,16 @@ async def _handle_single_relationship_extraction(
     timestamp: int,
     file_path: str = "unknown_source",
 ):
+    # 支持 5 字段（旧版）或 8 字段（新版含 chain_id）
+    has_chain_id = len(record_attributes) >= 8
+    expected_fields = 8 if has_chain_id else 5
+    
     if (
-        len(record_attributes) != 5 or "relation" not in record_attributes[0]
+        len(record_attributes) < 5 or "relation" not in record_attributes[0]
     ):  # treat "relationship" and "relation" interchangeable
         if len(record_attributes) > 1 and "relation" in record_attributes[0]:
             logger.warning(
-                f"{chunk_key}: LLM output format error; found {len(record_attributes)}/5 fields on REALTION `{record_attributes[1]}`~`{record_attributes[2] if len(record_attributes) > 2 else 'N/A'}`"
+                f"{chunk_key}: LLM output format error; found {len(record_attributes)}/{expected_fields} fields on REALTION `{record_attributes[1]}`~`{record_attributes[2] if len(record_attributes) > 2 else 'N/A'}`"
             )
             logger.debug(record_attributes)
         return None
@@ -516,14 +520,35 @@ async def _handle_single_relationship_extraction(
             )
             return None
 
-        # Process keywords with same cleaning pipeline
-        edge_keywords = sanitize_and_normalize_extracted_text(
-            record_attributes[3], remove_inner_quotes=True
-        )
+        # Extract evidence_level and relation_type (for evidence-enhanced extraction)
+        evidence_level = "B"
+        relation_type = "related"
+        if has_chain_id and len(record_attributes) >= 7:
+            # relation_type: causal/support/contradict/related
+            relation_type_raw = record_attributes[3].strip().lower()
+            if relation_type_raw in ("causal", "support", "contradict", "related"):
+                relation_type = relation_type_raw
+            # evidence_level: S/A/B/C
+            evidence_level_raw = record_attributes[4].strip().upper()
+            if evidence_level_raw in ("S", "A", "B", "C"):
+                evidence_level = evidence_level_raw
+        
+        # Process keywords - position depends on format
+        if has_chain_id and len(record_attributes) >= 8:
+            edge_keywords = sanitize_and_normalize_extracted_text(
+                record_attributes[5], remove_inner_quotes=True
+            )
+            edge_description = sanitize_and_normalize_extracted_text(record_attributes[6])
+            chain_id = record_attributes[7].strip() if len(record_attributes) > 7 else ""
+        else:
+            edge_keywords = sanitize_and_normalize_extracted_text(
+                record_attributes[3], remove_inner_quotes=True
+            )
+            edge_description = sanitize_and_normalize_extracted_text(record_attributes[4])
+            chain_id = ""
+        
         edge_keywords = edge_keywords.replace("，", ",")
 
-        # Process relationship description with same cleaning pipeline
-        edge_description = sanitize_and_normalize_extracted_text(record_attributes[4])
         if not edge_description.strip():
             logger.warning(
                 f"Relationship extraction error: empty description for relation '{source}'~'{target}' in chunk '{chunk_key}'"
@@ -537,7 +562,7 @@ async def _handle_single_relationship_extraction(
             else 1.0
         )
 
-        return dict(
+        result = dict(
             src_id=source,
             tgt_id=target,
             weight=weight,
@@ -546,7 +571,22 @@ async def _handle_single_relationship_extraction(
             source_id=edge_source_id,
             file_path=file_path,
             timestamp=timestamp,
+            # Evidence 证据链增强字段
+            evidence_level=evidence_level,
+            relation_type=relation_type,
+            source_provenance=[{
+                "doc_id": chunk_key.split("_")[0] if chunk_key else "unknown",
+                "file_name": Path(file_path).name if file_path else "unknown",
+                "file_path": file_path,
+                "chunk_id": chunk_key,
+            }],
         )
+        
+        # Add chain_id if available
+        if has_chain_id and chain_id:
+            result["chain_id"] = chain_id
+        
+        return result
 
     except ValueError as e:
         logger.warning(
@@ -2054,6 +2094,7 @@ async def _merge_edges_then_upsert(
     evidence_level = "B"
     relation_type = ""
     source_provenance = []
+    chain_ids = set()  # Collect all chain_ids from edges
     for dp in edges_data:
         if dp.get("evidence_level"):
             evidence_level = dp.get("evidence_level", "B")
@@ -2061,6 +2102,10 @@ async def _merge_edges_then_upsert(
             relation_type = dp.get("relation_type", "")
         if dp.get("source_provenance"):
             source_provenance = dp.get("source_provenance", [])
+        # Collect chain_id from each edge
+        if dp.get("chain_id"):
+            chain_ids.add(dp.get("chain_id"))
+    
     # Also check already_edge for existing evidence fields
     if already_edge:
         if already_edge.get("evidence_level"):
@@ -2069,6 +2114,9 @@ async def _merge_edges_then_upsert(
             relation_type = already_edge.get("relation_type", "")
         if already_edge.get("source_provenance"):
             source_provenance = already_edge.get("source_provenance", [])
+        # Get existing chain_ids from already_edge
+        if already_edge.get("evidence_chain_ids"):
+            chain_ids.update(already_edge.get("evidence_chain_ids", []))
 
     storage_key = make_relation_chunk_key(src_id, tgt_id)
     existing_full_source_ids = []
@@ -2182,10 +2230,6 @@ async def _merge_edges_then_upsert(
     sorted_edges = sorted(
         unique_edges.values(),
         key=lambda x: (x.get("timestamp", 0), -len(x.get("description", ""))),
-        # Evidence 证据链增强字段
-        evidence_level=evidence_level,
-        relation_type=relation_type,
-        source_provenance=source_provenance,
     )
     sorted_descriptions = [dp["description"] for dp in sorted_edges]
 
@@ -2323,6 +2367,8 @@ async def _merge_edges_then_upsert(
                 "file_path": file_path,
                 "created_at": node_created_at,
                 "truncate": "",
+                # Evidence 证据链增强字段
+                "evidence_chain_ids": list(chain_ids),
             }
             await knowledge_graph_inst.upsert_node(need_insert_id, node_data=node_data)
 
@@ -2353,6 +2399,7 @@ async def _merge_edges_then_upsert(
                         "evidence_level": "B",
                         "scene_tags": [],
                         "source_provenance": [],
+                        "evidence_chain_ids": list(chain_ids),
                     }
                 }
                 await safe_vdb_operation_with_exception(
@@ -2434,7 +2481,24 @@ async def _merge_edges_then_upsert(
             # 5. Update graph database and vector database with limited source_ids (conditional)
             limited_source_id_str = GRAPH_FIELD_SEP.join(limited_source_ids)
 
-            if limited_source_id_str != existing_node.get("source_id", ""):
+            # Merge chain_ids with existing node's chain_ids
+            existing_chain_ids = set(existing_node.get("evidence_chain_ids", []))
+            merged_chain_ids = list(existing_chain_ids.union(chain_ids))
+            
+            # Update evidence_chain_ids in graph database
+            if merged_chain_ids != existing_node.get("evidence_chain_ids", []):
+                updated = True
+                updated_node_data = {
+                    **existing_node,
+                    "evidence_chain_ids": merged_chain_ids,
+                }
+                # Only update source_id if it changed
+                if limited_source_id_str != existing_node.get("source_id", ""):
+                    updated_node_data["source_id"] = limited_source_id_str
+                await knowledge_graph_inst.upsert_node(
+                    need_insert_id, node_data=updated_node_data
+                )
+            elif limited_source_id_str != existing_node.get("source_id", ""):
                 updated = True
                 updated_node_data = {
                     **existing_node,
@@ -2463,6 +2527,7 @@ async def _merge_edges_then_upsert(
                             "evidence_level": existing_node.get("evidence_level", "B"),
                             "scene_tags": existing_node.get("scene_tags", []),
                             "source_provenance": existing_node.get("source_provenance", []),
+                            "evidence_chain_ids": merged_chain_ids,
                         }
                     }
                     await safe_vdb_operation_with_exception(
@@ -2494,6 +2559,11 @@ async def _merge_edges_then_upsert(
             file_path=file_path,
             created_at=edge_created_at,
             truncate=truncation_info,
+            # Evidence 证据链增强字段
+            evidence_level=evidence_level,
+            relation_type=relation_type,
+            source_provenance=source_provenance,
+            evidence_chain_ids=list(chain_ids),
         ),
     )
 
@@ -2511,6 +2581,7 @@ async def _merge_edges_then_upsert(
         evidence_level=evidence_level,
         relation_type=relation_type,
         source_provenance=source_provenance,
+        evidence_chain_ids=list(chain_ids),
     )
 
 
@@ -2969,6 +3040,9 @@ async def extract_entities(
         language=language,
     )
 
+    # Check if evidence mode is enabled
+    enable_evidence = global_config["addon_params"].get("enable_evidence", False)
+
     processed_chunks = 0
     total_chunks = len(ordered_chunks)
 
@@ -2990,18 +3064,47 @@ async def extract_entities(
         # Create cache keys collector for batch processing
         cache_keys_collector = []
 
-        # Get initial extraction
-        # Format system prompt without input_text for each chunk (enables OpenAI prompt caching across chunks)
-        entity_extraction_system_prompt = PROMPTS[
-            "entity_extraction_system_prompt"
-        ].format(**context_base)
-        # Format user prompts with input_text for each chunk
-        entity_extraction_user_prompt = PROMPTS["entity_extraction_user_prompt"].format(
-            **{**context_base, "input_text": content}
-        )
-        entity_continue_extraction_user_prompt = PROMPTS[
-            "entity_continue_extraction_user_prompt"
-        ].format(**{**context_base, "input_text": content})
+        # Get initial extraction - choose prompt based on enable_evidence flag
+        if enable_evidence:
+            # Use evidence-enhanced prompt
+            evidence_examples = "\n".join(PROMPTS["entity_extraction_with_evidence_examples"])
+            evidence_example_context_base = dict(
+                tuple_delimiter=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
+                completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
+                entity_types=", ".join(entity_types),
+                language=language,
+                topic=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
+            )
+            evidence_examples = evidence_examples.format(**evidence_example_context_base)
+            
+            evidence_context_base = dict(
+                tuple_delimiter=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
+                completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
+                entity_types=",".join(entity_types),
+                examples=evidence_examples,
+                language=language,
+            )
+            
+            entity_extraction_system_prompt = PROMPTS[
+                "entity_extraction_with_evidence"
+            ].format(**evidence_context_base)
+            entity_extraction_user_prompt = PROMPTS["entity_extraction_with_evidence"].format(
+                **{**evidence_context_base, "input_text": content}
+            )
+            entity_continue_extraction_user_prompt = PROMPTS[
+                "entity_extraction_with_evidence"
+            ].format(**{**evidence_context_base, "input_text": content})
+        else:
+            # Use standard prompt
+            entity_extraction_system_prompt = PROMPTS[
+                "entity_extraction_system_prompt"
+            ].format(**context_base)
+            entity_extraction_user_prompt = PROMPTS["entity_extraction_user_prompt"].format(
+                **{**context_base, "input_text": content}
+            )
+            entity_continue_extraction_user_prompt = PROMPTS[
+                "entity_continue_extraction_user_prompt"
+            ].format(**{**context_base, "input_text": content})
 
         # Calculate initial tokens to prevent context window overflow
         tokenizer = global_config["tokenizer"]

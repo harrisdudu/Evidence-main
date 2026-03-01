@@ -511,8 +511,11 @@ You are a Knowledge Graph Specialist with expertise in Evidence-based reasoning.
         *   `A`: 头部券商研报、顶刊论文、权威数据库(Wind/Bloomberg)
         *   `B`: 中型机构报告、深度分析、行业协会指南
         *   `C`: 普通报告、书籍章节、行业周报/月报
-    *   **Output Format (7 fields):**
-        *   Format: `relation{tuple_delimiter}source_entity{tuple_delimiter}target_entity{tuple_delimiter}relation_type{tuple_delimiter}evidence_level{tuple_delimiter}keywords{tuple_delimiter}description`
+    *   **Evidence Chain ID Assignment:** Generate unique chain_id for each evidence chain:
+        *   Format: `chain_{src_entity}_{relation_type}_{timestamp}` or use auto-generated unique ID
+        *   Example: chain_央行_causal_20250115 or chain_1a2b3c4d
+    *   **Output Format (8 fields):**
+        *   Format: `relation{tuple_delimiter}source_entity{tuple_delimiter}target_entity{tuple_delimiter}relation_type{tuple_delimiter}evidence_level{tuple_delimiter}keywords{tuple_delimiter}description{tuple_delimiter}chain_id`
 
 3. **Key Rules:**
     *   Output entities first, then relationships
@@ -545,12 +548,12 @@ entity{tuple_delimiter}央行{tuple_delimiter}organization{tuple_delimiter}央�
 entity{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}regulation{tuple_delimiter}央行发布的关于完善结构性货币政策工具的通知文件。
 entity{tuple_delimiter}科技创新领域{tuple_delimiter}concept{tuple_delimiter}指涉及新技术、新产品、新工艺等创新活动的经济领域。
 entity{tuple_delimiter}科创企业{tuple_delimiter}organization{tuple_delimiter}指符合科创板上市条件的科技创新型企业。
-entity{tuple_delimiter}科创板{topic}market{tuple_delimiter}为科技创新企业服务的股票交易板块。
+entity{tuple_delimiter}科创板{tuple_delimiter}market{tuple_delimiter}为科技创新企业服务的股票交易板块。
 entity{tuple_delimiter}Wind{tuple_delimiter}organization{tuple_delimiter}权威金融数据提供平台。
-relation{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}科技创新领域{tuple_delimiter}causal{tuple_delimiter}S{tuple_delimiter}政策扩大适用,结构性货币工具{tuple_delimiter}该通知将结构性货币政策工具适用范围扩大至科技创新领域，为科创企业提供融资支持。
-relation{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}科创企业{tuple_delimiter}support{tuple_delimiter}S{tuple_delimiter}融资成本降低,政策支持{tuple_delimiter}该通知明确将降低科创企业融资成本。
-relation{tuple_delimiter}Wind{tuple_delimiter}科创板{tuple_delimiter}support{tuple_delimiter}A{tuple_delimiter}数据来源,融资规模{tuple_delimiter}Wind数据显示科创板企业融资规模数据。
-relation{tuple_delimiter}科技创新领域{tuple_delimiter}科创企业{tuple_delimiter}related{tuple_delimiter}B{tuple_delimiter}主体关系,领域企业{tuple_delimiter}科技创新领域包含科创板上市的科创企业。
+relation{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}科技创新领域{tuple_delimiter}causal{tuple_delimiter}S{tuple_delimiter}政策扩大适用,结构性货币工具{tuple_delimiter}该通知将结构性货币政策工具适用范围扩大至科技创新领域，为科创企业提供融资支持。{tuple_delimiter}chain_银发_causal_001
+relation{tuple_delimiter}银发〔2025〕18号{tuple_delimiter}科创企业{tuple_delimiter}support{tuple_delimiter}S{tuple_delimiter}融资成本降低,政策支持{tuple_delimiter}该通知明确将降低科创企业融资成本。{tuple_delimiter}chain_银发_support_002
+relation{tuple_delimiter}Wind{tuple_delimiter}科创板{tuple_delimiter}support{tuple_delimiter}A{tuple_delimiter}数据来源,融资规模{tuple_delimiter}Wind数据显示科创板企业融资规模数据。{tuple_delimiter}chain_Wind_support_003
+relation{tuple_delimiter}科技创新领域{tuple_delimiter}科创企业{tuple_delimiter}related{tuple_delimiter}B{tuple_delimiter}主体关系,领域企业{tuple_delimiter}科技创新领域包含科创板上市的科创企业。{tuple_delimiter}chain_科创板_related_004
 <|COMPLETE|>
 """
 ]

@@ -468,6 +468,7 @@ class LightRAG:
                 "SUMMARY_LANGUAGE", DEFAULT_SUMMARY_LANGUAGE, str
             ),
             "entity_types": get_env_value("ENTITY_TYPES", DEFAULT_ENTITY_TYPES, list),
+            "enable_evidence": get_env_value("ENABLE_EVIDENCE", False, bool),
         }
     )
 
